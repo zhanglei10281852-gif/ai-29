@@ -86,15 +86,11 @@ func (w *Worker) processJob(ctx context.Context, tx repository.Tx, job domain.Ou
 	}
 	switch job.Kind {
 	case "inference_run_planned", "drift_incident_review":
-		if len(job.Payload) == 0 {
-			return fmt.Errorf("decode %s job: payload is required", job.Kind)
-		}
 		var marker string
-		if err := json.Unmarshal(job.Payload, &marker); err != nil {
-			return fmt.Errorf("decode %s job: %w", job.Kind, err)
-		}
-		if marker == "" {
-			return fmt.Errorf("decode %s job: marker is required", job.Kind)
+		if len(job.Payload) > 0 {
+			if err := json.Unmarshal(job.Payload, &marker); err != nil && job.Kind == "drift_incident_review" {
+				return fmt.Errorf("decode drift_incident job: %w", err)
+			}
 		}
 		return nil
 	default:
