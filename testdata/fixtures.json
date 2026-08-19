@@ -1,0 +1,9 @@
+{
+  "workspace_code": "RANKING-PROD",
+  "source_zone_code": "FEATURE-APAC",
+  "target_zone_code": "INFERENCE-APAC",
+  "compute_pool_serial": "GPU-A100-0001",
+  "schema_family": "ranking-features-v2",
+  "quality_minimum_score": 0.8,
+  "quality_maximum_score": 0.99
+}

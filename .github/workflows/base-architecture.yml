@@ -1,0 +1,73 @@
+name: Base architecture validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      GOTOOLCHAIN: local
+      TARGET_ARCH: ${{ matrix.arch }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify native runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(go env GOOS)" = "linux"
+          test "$(go env GOARCH)" = "$TARGET_ARCH"
+          go env GOOS GOARCH GOHOSTOS GOHOSTARCH GOVERSION
+          uname -a
+
+      - name: Test, vet, and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          go mod download
+          go test ./... -count=1
+          go vet ./...
+          go build ./...
+
+      - name: Build and start native image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ai-governance-base:$TARGET_ARCH"
+          container="ai-governance-base-$TARGET_ARCH"
+          docker build --platform "linux/$TARGET_ARCH" -t "$image" .
+          test "$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" = "linux/$TARGET_ARCH"
+          docker run -d --name "$container" -p 18080:8080 -e DATABASE_PATH=/tmp/ai.db "$image"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:18080/healthz >/tmp/health.json \
+              && curl --fail --silent http://127.0.0.1:18080/readyz >/tmp/ready.json; then
+              cat /tmp/health.json
+              cat /tmp/ready.json
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$container"
+          exit 1
